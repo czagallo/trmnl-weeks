@@ -23,10 +23,21 @@ app.use(express.urlencoded({ extended: true }));
 
 // Step 1: Installation URL - TRMNL sends token and callback URL
 app.get('/install', async (req, res) => {
+  // Log the incoming request for debugging
+  console.log('Install request received:');
+  console.log('Query params:', req.query);
+  console.log('Body:', req.body);
+  console.log('Headers:', req.headers);
+
   const { token, installation_callback_url } = req.query;
 
   if (!token || !installation_callback_url) {
-    return res.status(400).json({ error: 'Missing token or installation_callback_url' });
+    console.error('Missing required parameters');
+    return res.status(400).json({
+      error: 'Missing token or installation_callback_url',
+      received_query: req.query,
+      received_body: req.body
+    });
   }
 
   if (!CLIENT_ID || !CLIENT_SECRET) {
