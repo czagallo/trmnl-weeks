@@ -1,0 +1,30 @@
+[Unit]
+Description=TRMNL Week Number Plugin
+After=network.target
+
+[Service]
+Type=simple
+User=antfarm
+Group=antfarm
+WorkingDirectory=/home/antfarm/deployments/trmnl-weeks
+Environment="NODE_ENV=production"
+EnvironmentFile=/home/antfarm/deployments/trmnl-weeks/.env
+
+# Use kill_port script to ensure port 3000 is free
+ExecStartPre=/usr/local/bin/kill_port.sh 3000
+ExecStartPre=/bin/sleep 2
+
+# Start the application
+ExecStart=/usr/bin/node server.js
+
+# Kill on stop
+ExecStop=/usr/local/bin/kill_port.sh 3000
+
+KillMode=mixed
+SendSIGKILL=yes
+TimeoutStopSec=5
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
