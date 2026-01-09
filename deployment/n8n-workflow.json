@@ -20,16 +20,24 @@
     },
     {
       "parameters": {
-        "command": "/home/antfarm/deployments/trmnl-weeks/deployment/deploy.sh"
+        "authentication": "password",
+        "command": "/home/antfarm/deployments/trmnl-weeks/deployment/deploy.sh",
+        "cwd": "/home/antfarm/deployments/trmnl-weeks"
       },
       "id": "execute-deploy",
-      "name": "Execute Deploy Script",
-      "type": "n8n-nodes-base.executeCommand",
+      "name": "SSH - Execute Deploy Script",
+      "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
       "position": [
         470,
         300
-      ]
+      ],
+      "credentials": {
+        "sshPassword": {
+          "id": "1",
+          "name": "SSH localhost"
+        }
+      }
     },
     {
       "parameters": {
