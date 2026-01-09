@@ -21,22 +21,20 @@ app.use(express.urlencoded({ extended: true }));
 // INSTALLATION FLOW ENDPOINTS
 // ============================================================================
 
-// Step 1: Installation URL - TRMNL sends token and callback URL
+// Step 1: Installation URL - TRMNL sends code and callback URL
 app.get('/install', async (req, res) => {
   // Log the incoming request for debugging
   console.log('Install request received:');
   console.log('Query params:', req.query);
-  console.log('Body:', req.body);
-  console.log('Headers:', req.headers);
 
-  const { token, installation_callback_url } = req.query;
+  // TRMNL sends 'code' (OAuth authorization code) not 'token'
+  const { code, installation_callback_url } = req.query;
 
-  if (!token || !installation_callback_url) {
+  if (!code || !installation_callback_url) {
     console.error('Missing required parameters');
     return res.status(400).json({
-      error: 'Missing token or installation_callback_url',
-      received_query: req.query,
-      received_body: req.body
+      error: 'Missing code or installation_callback_url',
+      received_query: req.query
     });
   }
 
@@ -45,13 +43,16 @@ app.get('/install', async (req, res) => {
   }
 
   try {
-    // Step 2: Exchange token for access_token
-    const accessToken = await exchangeTokenForAccess(token);
+    // Step 2: Exchange authorization code for access_token
+    console.log('Exchanging authorization code for access token...');
+    const accessToken = await exchangeCodeForAccess(code);
+    console.log('Access token received successfully');
 
     // Step 3: Store the access token temporarily (will get user data via webhook)
     // In production, associate this with a session or temporary ID
 
     // Step 4: Redirect user back to TRMNL
+    console.log('Redirecting to:', installation_callback_url);
     res.redirect(installation_callback_url);
   } catch (error) {
     console.error('Installation error:', error);
@@ -59,13 +60,13 @@ app.get('/install', async (req, res) => {
   }
 });
 
-// Helper function to exchange token for access_token
-function exchangeTokenForAccess(token) {
+// Helper function to exchange authorization code for access_token
+function exchangeCodeForAccess(code) {
   return new Promise((resolve, reject) => {
     const postData = JSON.stringify({
       client_id: CLIENT_ID,
       client_secret: CLIENT_SECRET,
-      token: token,
+      code: code,
       grant_type: 'authorization_code'
     });
 
