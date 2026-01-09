@@ -11,30 +11,39 @@
       "id": "webhook-trigger",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
-      "position": [250, 300],
+      "typeVersion": 1.1,
+      "position": [
+        250,
+        300
+      ],
       "webhookId": "trmnl-weeks-deploy"
     },
     {
       "parameters": {
-        "command": "=/home/antfarm/deployments/trmnl-weeks/deployment/deploy.sh"
+        "command": "/home/antfarm/deployments/trmnl-weeks/deployment/deploy.sh"
       },
       "id": "execute-deploy",
       "name": "Execute Deploy Script",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [470, 300]
+      "position": [
+        470,
+        300
+      ]
     },
     {
       "parameters": {
         "respondWith": "text",
-        "responseBody": "=Deployment triggered successfully at {{ $now.toISO() }}\n\nOutput:\n{{ $json.stdout }}\n\nErrors:\n{{ $json.stderr }}"
+        "responseBody": "Deployment triggered successfully!\n\nTimestamp: {{ $now.toISO() }}\n\nOutput:\n{{ $json.stdout }}\n\nErrors (if any):\n{{ $json.stderr }}"
       },
       "id": "respond-webhook",
       "name": "Respond to Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [690, 300]
+      "position": [
+        690,
+        300
+      ]
     }
   ],
   "connections": {
@@ -61,19 +70,9 @@
       ]
     }
   },
-  "active": true,
-  "settings": {},
-  "versionId": "1",
-  "id": "trmnl-weeks-deploy",
-  "meta": {
-    "instanceId": "your-n8n-instance-id"
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
   },
-  "tags": [
-    {
-      "name": "deployment"
-    },
-    {
-      "name": "codeberg"
-    }
-  ]
+  "tags": []
 }
