@@ -117,20 +117,28 @@ function exchangeCodeForAccess(code) {
 // Installation success webhook - receives user data after successful installation
 app.post('/webhooks/install-success', (req, res) => {
   console.log('Success webhook received!');
-  console.log('Headers:', req.headers);
   console.log('Body:', JSON.stringify(req.body, null, 2));
 
-  const userData = req.body;
-  const { user_uuid, plugin_setting_id, access_token } = userData;
+  // TRMNL sends user data nested under 'user' key
+  const user = req.body.user;
+  if (!user) {
+    console.error('No user data in webhook');
+    return res.status(400).json({ error: 'No user data' });
+  }
+
+  const user_uuid = user.uuid;
+  const plugin_setting_id = user.plugin_setting_id;
+  const access_token = req.headers.authorization?.replace('Bearer ', '');
 
   console.log('Installation successful for user:', user_uuid);
+  console.log('Plugin setting ID:', plugin_setting_id);
 
   // Store user connection data
   pluginConnections.set(user_uuid, {
     plugin_setting_id,
     access_token,
     installed_at: new Date().toISOString(),
-    user_data: userData
+    user_data: user
   });
 
   res.status(200).json({ success: true });
@@ -138,12 +146,17 @@ app.post('/webhooks/install-success', (req, res) => {
 
 // Uninstallation webhook - cleanup when user uninstalls
 app.post('/webhooks/uninstall', (req, res) => {
-  const { user_uuid } = req.body;
+  console.log('Uninstall webhook received:', JSON.stringify(req.body, null, 2));
+
+  // TRMNL might send user data nested under 'user' key
+  const user_uuid = req.body.user?.uuid || req.body.uuid;
 
   console.log('Uninstalling plugin for user:', user_uuid);
 
   // Remove user data
-  pluginConnections.delete(user_uuid);
+  if (user_uuid) {
+    pluginConnections.delete(user_uuid);
+  }
 
   res.status(200).json({ success: true });
 });
