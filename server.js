@@ -52,13 +52,9 @@ app.get('/install', async (req, res) => {
     // In production, associate this with a session or temporary ID
 
     // Step 4: Redirect user back to TRMNL
-    // Remove the 'code' parameter from callback URL since it's been consumed
-    const callbackUrl = new URL(installation_callback_url);
-    callbackUrl.searchParams.delete('code');
-    const cleanCallbackUrl = callbackUrl.toString();
-
-    console.log('Redirecting to:', cleanCallbackUrl);
-    res.redirect(cleanCallbackUrl);
+    // Use the exact callback URL that TRMNL provided
+    console.log('Redirecting to:', installation_callback_url);
+    res.redirect(302, installation_callback_url);
   } catch (error) {
     console.error('Installation error:', error);
     res.status(500).json({ error: 'Installation failed', details: error.message });
@@ -95,11 +91,13 @@ function exchangeCodeForAccess(code) {
 
       res.on('end', () => {
         try {
+          console.log('OAuth response:', data);
           const response = JSON.parse(data);
+          console.log('Parsed response:', response);
           if (response.access_token) {
             resolve(response.access_token);
           } else {
-            reject(new Error('No access_token in response'));
+            reject(new Error(`No access_token in response: ${data}`));
           }
         } catch (error) {
           reject(error);
