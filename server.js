@@ -116,6 +116,10 @@ function exchangeCodeForAccess(code) {
 
 // Installation success webhook - receives user data after successful installation
 app.post('/webhooks/install-success', (req, res) => {
+  console.log('Success webhook received!');
+  console.log('Headers:', req.headers);
+  console.log('Body:', JSON.stringify(req.body, null, 2));
+
   const userData = req.body;
   const { user_uuid, plugin_setting_id, access_token } = userData;
 
