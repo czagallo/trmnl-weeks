@@ -52,8 +52,13 @@ app.get('/install', async (req, res) => {
     // In production, associate this with a session or temporary ID
 
     // Step 4: Redirect user back to TRMNL
-    console.log('Redirecting to:', installation_callback_url);
-    res.redirect(installation_callback_url);
+    // Remove the 'code' parameter from callback URL since it's been consumed
+    const callbackUrl = new URL(installation_callback_url);
+    callbackUrl.searchParams.delete('code');
+    const cleanCallbackUrl = callbackUrl.toString();
+
+    console.log('Redirecting to:', cleanCallbackUrl);
+    res.redirect(cleanCallbackUrl);
   } catch (error) {
     console.error('Installation error:', error);
     res.status(500).json({ error: 'Installation failed', details: error.message });
