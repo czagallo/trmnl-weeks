@@ -25,7 +25,7 @@ app.use(express.urlencoded({ extended: true }));
 app.get('/install', async (req, res) => {
   // Log the incoming request for debugging
   console.log('Install request received:');
-  console.log('Query params:', req.query);
+  console.log('Query params:', Object.keys(req.query).join(', ') || '(none)');
 
   // TRMNL sends 'code' (OAuth authorization code) not 'token'
   const { code, installation_callback_url } = req.query;
@@ -53,7 +53,7 @@ app.get('/install', async (req, res) => {
 
     // Step 4: Redirect user back to TRMNL
     // Use the exact callback URL that TRMNL provided
-    console.log('Redirecting to:', installation_callback_url);
+    console.log('Redirecting to:', installation_callback_url.split('?')[0]);
     res.redirect(302, installation_callback_url);
   } catch (error) {
     console.error('Installation error:', error);
@@ -91,13 +91,11 @@ function exchangeCodeForAccess(code) {
 
       res.on('end', () => {
         try {
-          console.log('OAuth response:', data);
           const response = JSON.parse(data);
-          console.log('Parsed response:', response);
           if (response.access_token) {
             resolve(response.access_token);
           } else {
-            reject(new Error(`No access_token in response: ${data}`));
+            reject(new Error(`No access_token in response (keys: ${Object.keys(response).join(', ') || 'none'})`));
           }
         } catch (error) {
           reject(error);
@@ -117,7 +115,6 @@ function exchangeCodeForAccess(code) {
 // Installation success webhook - receives user data after successful installation
 app.post('/webhooks/install-success', (req, res) => {
   console.log('Success webhook received!');
-  console.log('Body:', JSON.stringify(req.body, null, 2));
 
   // TRMNL sends user data nested under 'user' key
   const user = req.body.user;
@@ -146,7 +143,7 @@ app.post('/webhooks/install-success', (req, res) => {
 
 // Uninstallation webhook - cleanup when user uninstalls
 app.post('/webhooks/uninstall', (req, res) => {
-  console.log('Uninstall webhook received:', JSON.stringify(req.body, null, 2));
+  console.log('Uninstall webhook received');
 
   // TRMNL might send user data nested under 'user' key
   const user_uuid = req.body.user?.uuid || req.body.uuid;
