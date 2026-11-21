@@ -52,9 +52,15 @@ Minimal week number for multi-plugin layouts
 - 🗓️ Reference week numbers for scheduling
 - 📈 Monitor progress in week-based workflows
 
+## Deployment
+
+Pushes to `main` are tested (`npm test` starts the server and checks `/health`) and scanned for vulnerable dependencies and committed secrets (Trivy), then
+deployed by GitHub Actions (`.github/workflows/deploy.yml`), which runs `deployment/deploy.sh` on the server. The
+server connection comes from repository secrets.
+
 ## Support
 
-For issues or questions, please open an issue on [Codeberg](https://codeberg.org/czagallo/trmnl-weeks/issues).
+For issues or questions, please open an issue on [GitHub](https://github.com/czagallo/trmnl-weeks/issues).
 
 ## License
 

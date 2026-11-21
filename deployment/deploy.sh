@@ -1,51 +1,43 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# Server-side deploy. Triggered by the GitHub Actions pipeline through an SSH key that is locked to this script
+# (authorized_keys forced command), or run by hand on the server:  ./deployment/deploy.sh
+# Pulls main, installs production deps, restarts the systemd service and fails unless /health answers.
+#
+# Everything runs inside main() and the script exits right after it: bash reads scripts lazily, and the git reset
+# below rewrites this very file, so without that the old process could execute half-old, half-new lines.
+set -euo pipefail
 
-# TRMNL Weeks Deployment Script
-# This script is triggered by n8n webhook when code is pushed to Codeberg
+SERVICE=trmnl-weeks
 
-set -e  # Exit on error
+main() {
+  cd "$(dirname "$0")/.."
 
-DEPLOY_DIR="/home/antfarm/deployments/trmnl-weeks"
-REPO_URL="https://codeberg.org/YOUR_USERNAME/trmnl-weeks.git"
-SERVICE_NAME="trmnl-weeks"
+  exec 9>"/tmp/${SERVICE}-deploy.lock"
+  flock -n 9 || { echo "another deploy is running"; exit 1; }
 
-echo "=== Starting TRMNL Weeks Deployment ==="
-echo "Timestamp: $(date)"
+  local before port
+  before=$(git rev-parse --short HEAD)
+  git fetch -q origin main
+  git reset -q --hard origin/main
+  echo "code: $before -> $(git log --oneline -1)"
 
-# Navigate to deployment directory
-cd "$DEPLOY_DIR" || exit 1
+  npm ci --omit=dev --no-audit --no-fund --loglevel=error
 
-# Pull latest code from Codeberg
-echo "Pulling latest code from Codeberg..."
-if [ -d ".git" ]; then
-    git fetch origin
-    git reset --hard origin/main
-    git clean -fd
-else
-    echo "Git repository not initialized. Cloning..."
-    cd /home/antfarm/deployments/
-    rm -rf trmnl-weeks
-    git clone "$REPO_URL" trmnl-weeks
-    cd trmnl-weeks
-fi
+  sudo -n systemctl restart "$SERVICE"
 
-# Install dependencies
-echo "Installing dependencies..."
-npm ci --production
+  port=$(grep -E '^PORT=' .env 2>/dev/null | cut -d= -f2 || true)
+  port=${port:-3000}
+  for _ in $(seq 1 20); do
+    if curl -fsS --max-time 3 "http://127.0.0.1:${port}/health" >/dev/null 2>&1; then
+      echo "healthy on port ${port}"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "NOT healthy after 20 s"
+  sudo -n systemctl status "$SERVICE" --no-pager -n 30 || true
+  return 1
+}
 
-# Restart the service
-echo "Restarting service..."
-sudo systemctl restart "$SERVICE_NAME"
-
-# Check service status
-sleep 3
-if sudo systemctl is-active --quiet "$SERVICE_NAME"; then
-    echo "✓ Deployment successful! Service is running."
-    sudo systemctl status "$SERVICE_NAME" --no-pager
-else
-    echo "✗ Deployment failed! Service is not running."
-    sudo systemctl status "$SERVICE_NAME" --no-pager
-    exit 1
-fi
-
-echo "=== Deployment Complete ==="
+main "$@"
+exit $?

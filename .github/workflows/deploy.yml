@@ -1,0 +1,120 @@
+# Test and scan, then deploy on every push to main (GitHub Actions).
+#
+# Repo secrets (Settings -> Secrets and variables -> Actions). Kept out of the file, never committed:
+#   DEPLOY_SSH_KEY   private key whose public half is in the server's authorized_keys, locked to deployment/deploy.sh
+#   DEPLOY_HOST      SSH hostname behind Cloudflare Access
+#   DEPLOY_USER      SSH user on the server
+#   DEPLOY_HOST_KEY  the server's public host key, "ssh-ed25519 AAAA..." (hostname prefix optional; pins its identity)
+# The deploy key can only trigger the deploy script: no shell, no port forwarding, no file access.
+
+name: test-and-deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 6 * * 1' # weekly Trivy scan: new CVEs show up even when the code does not change (never deploys)
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Dependency CVEs (package-lock.json), committed secrets and config issues; HIGH/CRITICAL fail the run.
+  # Trivy is installed from a pinned release with a pinned checksum instead of trivy-action: the action's tags were
+  # hijacked in March 2026, and this workflow holds deploy secrets. The job sees no secrets itself.
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Trivy 0.76.2
+        run: |
+          f=trivy_0.76.2_Linux-64bit.tar.gz
+          curl -fsSL -o "$f" "https://github.com/aquasecurity/trivy/releases/download/v0.76.2/$f"
+          echo "bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf  $f" | sha256sum -c -
+          tar xzf "$f" trivy && sudo mv trivy /usr/local/bin/ && trivy --version
+      - name: Scan
+        run: |
+          trivy fs --quiet --scanners vuln,secret,misconfig --severity HIGH,CRITICAL \
+            --ignore-unfixed --exit-code 1 .
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Tests
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+
+  deploy:
+    needs: [test, scan]
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Install cloudflared 2026.10.7
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL -o "$HOME/.local/bin/cloudflared" \
+            https://github.com/cloudflare/cloudflared/releases/download/2026.10.7/cloudflared-linux-amd64
+          chmod +x "$HOME/.local/bin/cloudflared"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_HOST_KEY: ${{ secrets.DEPLOY_HOST_KEY }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          [ -n "$DEPLOY_HOST" ] && [ -n "$DEPLOY_HOST_KEY" ] && [ -n "$DEPLOY_USER" ] || {
+            echo "DEPLOY_HOST / DEPLOY_HOST_KEY / DEPLOY_USER secrets missing"; exit 1; }
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$HOME/.ssh/deploy_key" && chmod 600 "$HOME/.ssh/deploy_key"
+          # Sanity-check the secret without printing it: right file, intact line breaks, expected key.
+          head -1 "$HOME/.ssh/deploy_key" | grep -q "BEGIN OPENSSH PRIVATE KEY" || {
+            echo "DEPLOY_SSH_KEY does not start with '-----BEGIN OPENSSH PRIVATE KEY-----' (wrong file pasted? use secrets/ci_deploy_key, not .pub)"; exit 1; }
+          fp=$(ssh-keygen -y -f "$HOME/.ssh/deploy_key" | ssh-keygen -lf - | awk '{print $2}') || { echo "DEPLOY_SSH_KEY is not a readable private key (line breaks lost?)"; exit 1; }
+          echo "key fingerprint: $fp (expected SHA256:YSQcK/kWc6EXu2rMG3OqDaP0kBgm4HsRlDVxlU4lRlU)"
+          [ "$fp" = "SHA256:YSQcK/kWc6EXu2rMG3OqDaP0kBgm4HsRlDVxlU4lRlU" ] || { echo "DEPLOY_SSH_KEY is a different key than the one authorized on the server"; exit 1; }
+          # Accept the host key with or without a leading hostname (and with a trailing comment): keep only
+          # "<type> <base64>" and pin it to DEPLOY_HOST ourselves.
+          hk=$(printf '%s\n' "$DEPLOY_HOST_KEY" | tr -d '\r' | tr '\n' ' ')
+          hostkey=$(printf '%s\n' "$hk" | grep -oE '(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp[0-9]+) [A-Za-z0-9+/=]+' | head -1 || true)
+          if [ -z "$hostkey" ]; then
+            # bare base64 of an ed25519 key ("AAAAC3NzaC1lZDI1NTE5...") without the type word
+            b64=$(printf '%s\n' "$hk" | grep -oE 'AAAAC3NzaC1lZDI1NTE5[A-Za-z0-9+/=]+' | head -1 || true)
+            [ -n "$b64" ] && hostkey="ssh-ed25519 $b64"
+          fi
+          if [ -z "$hostkey" ]; then
+            echo "DEPLOY_HOST_KEY does not contain a host key. Expected: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA..."
+            exit 1
+          fi
+          printf '%s %s\n' "$DEPLOY_HOST" "$hostkey" > "$HOME/.ssh/known_hosts"
+          echo "pinned host key: $(printf '%s\n' "$hostkey" | ssh-keygen -lf - | awk '{print $2}')"
+          cat > "$HOME/.ssh/config" <<EOC
+          Host deploytarget
+            HostName $DEPLOY_HOST
+            User $DEPLOY_USER
+            IdentityFile $HOME/.ssh/deploy_key
+            UserKnownHostsFile $HOME/.ssh/known_hosts
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            ProxyCommand $HOME/.local/bin/cloudflared access ssh --hostname %h
+          EOC
+          chmod 600 "$HOME/.ssh/config"
+      - name: Deploy
+        run: ssh -F "$HOME/.ssh/config" deploytarget deploy
+      - name: Clean up key
+        if: always()
+        run: rm -f "$HOME/.ssh/deploy_key"
