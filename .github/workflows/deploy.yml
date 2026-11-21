@@ -68,6 +68,7 @@ jobs:
           mkdir -p "$HOME/.local/bin"
           curl -fsSL -o "$HOME/.local/bin/cloudflared" \
             https://github.com/cloudflare/cloudflared/releases/download/2026.10.7/cloudflared-linux-amd64
+          echo "1f99fb518b83dec2ba8d870a7cc991d82a77e6196295a3d2754ba17ab9f91872  $HOME/.local/bin/cloudflared" | sha256sum -c -
           chmod +x "$HOME/.local/bin/cloudflared"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Configure SSH
